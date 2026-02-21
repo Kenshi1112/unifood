@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - My Food App</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script>
+    // Theme and Auth check
+    (function() {
+      const token = localStorage.getItem('token');
+      let role = 'user';
+      if (token) {
+        try {
+          role = JSON.parse(atob(token.split('.')[1])).role;
+        } catch(e) { console.error('Invalid token'); }
+      }
+      if (role !== 'admin') {
+        alert('Access Denied. Admin only.');
+        window.location.href = '/';
+      }
+      const getPreferredTheme = () => localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-bs-theme', getPreferredTheme());
+    })();
+  </script>
+</head>
+<body class="bg-body-tertiary">
+
+  <nav class="navbar navbar-expand-lg bg-body-secondary shadow-sm mb-4">
+    <div class="container">
+      <a class="navbar-brand fw-bold text-primary" href="/">SAONLY - Admin Panel</a>
+      <div class="d-flex align-items-center gap-2">
+        <a href="/" class="btn btn-outline-secondary btn-sm">Back to Home</a>
+        <button class="btn btn-sm btn-outline-secondary" id="theme-toggle-btn">🌓</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <ul class="nav nav-tabs" id="adminTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-panel" type="button" role="tab">User Management</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="restaurants-tab" data-bs-toggle="tab" data-bs-target="#restaurants-panel" type="button" role="tab">Restaurant Management</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="issues-tab" data-bs-toggle="tab" data-bs-target="#issues-panel" type="button" role="tab">Issue Reports</button>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="adminTabContent">
+      <!-- User Management Panel -->
+      <div class="tab-pane fade show active" id="users-panel" role="tabpanel">
+        <div class="card border-0 shadow-sm mt-3">
+          <div class="card-body">
+            <h4 class="card-title">All Users</h4>
+            <div class="table-responsive">
+              <table class="table table-striped table-hover">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="users-list">
+                  <!-- User data will be populated here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Restaurant Management Panel -->
+      <div class="tab-pane fade" id="restaurants-panel" role="tabpanel">
+        <div class="card border-0 shadow-sm mt-3">
+          <div class="card-body">
+            <h4 class="card-title">All Restaurants</h4>
+            <div class="table-responsive">
+              <table class="table table-striped table-hover">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Owner ID</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="restaurants-list">
+                  <!-- Restaurant data will be populated here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Issue Reports Panel -->
+      <div class="tab-pane fade" id="issues-panel" role="tabpanel">
+        <div class="card border-0 shadow-sm mt-3">
+          <div class="card-body">
+            <h4 class="card-title">Issue Reports</h4>
+            <div class="table-responsive">
+              <table class="table table-striped table-hover">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Message</th>
+                    <th>Image</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody id="issues-list">
+                  <!-- Issue data will be populated here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const token = localStorage.getItem('token');
+
+    // Theme Toggler
+    document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-bs-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+    });
+
+    // --- User Management ---
+    async function fetchUsers() {
+      const res = await fetch('/api/auth/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const json = await res.json();
+      const list = document.getElementById('users-list');
+      list.innerHTML = '';
+      if (json.success) {
+        json.data.forEach(user => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${user.name}</td>
+            <td>${user.email}</td>
+            <td>
+              <select class="form-select form-select-sm" onchange="updateUserRole('${user._id}', this.value)">
+                <option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option>
+                <option value="storekeeper" ${user.role === 'storekeeper' ? 'selected' : ''}>Storekeeper</option>
+                <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+              </select>
+            </td>
+            <td>${new Date(user.createdAt).toLocaleDateString()}</td>
+            <td>
+              <button class="btn btn-sm btn-danger" onclick="deleteUser('${user._id}')">Delete</button>
+            </td>
+          `;
+          list.appendChild(row);
+        });
+      }
+    }
+
+    async function updateUserRole(userId, role) {
+      if (!confirm(`Change this user's role to ${role}?`)) {
+        fetchUsers(); // Revert dropdown if cancelled
+        return;
+      }
+      const res = await fetch(`/api/auth/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ role })
+      });
+      if (res.ok) {
+        alert('User role updated.');
+      } else {
+        alert('Failed to update role.');
+        fetchUsers(); // Revert on failure
+      }
+    }
+
+    async function deleteUser(userId) {
+      if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
+      const res = await fetch(`/api/auth/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        alert('User deleted.');
+        fetchUsers();
+      } else {
+        alert('Failed to delete user.');
+      }
+    }
+
+    // --- Restaurant Management ---
+    async function fetchAllRestaurants() {
+      const res = await fetch('/api/restaurant');
+      const json = await res.json();
+      const restaurants = json.data || [];
+      const list = document.getElementById('restaurants-list');
+      list.innerHTML = '';
+      restaurants.forEach(r => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${r.name}</td>
+          <td>${r.category}</td>
+          <td>${r.user}</td> <!-- Just shows user ID -->
+          <td>
+            <a href="/edit/${r._id}" class="btn btn-sm btn-secondary">Edit</a>
+            <button class="btn btn-sm btn-danger" onclick="deleteRestaurant('${r._id}')">Delete</button>
+          </td>
+        `;
+        list.appendChild(row);
+      });
+    }
+
+    async function deleteRestaurant(id) {
+      if (!confirm('Are you sure you want to delete this restaurant?')) return;
+      const res = await fetch('/api/restaurant/' + id, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (res.ok) {
+        alert('Restaurant deleted.');
+        fetchAllRestaurants();
+      } else {
+        alert('Failed to delete restaurant.');
+      }
+    }
+
+   // --- Issue Reports ---
+// --- Issue Reports ---
+    async function fetchIssues() {
+      try {
+        const res = await fetch('/api/issue', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const json = await res.json();
+        const list = document.getElementById('issues-list');
+        list.innerHTML = ''; // ล้างข้อมูลเก่าออกก่อน
+        
+        // เช็คว่าสำเร็จ และมีข้อมูลจริงไหม
+        if (json.success && json.data && json.data.length > 0) {
+          json.data.forEach(issue => {
+            // ดึงชื่อผู้ใช้ 
+            let userName = '-';
+            if (issue.user) {
+               userName = issue.user.username || issue.user.email || issue.user._id || 'Unknown User';
+            }
+
+            const role = issue.role || '-';
+            const msg = issue.message || '-';
+            
+            // 🛠️ แก้ไขการจัดการลิงก์รูปภาพตรงนี้
+            let imgLink = '-';
+            if (issue.image) {
+                let finalImageUrl = issue.image;
+                
+                // ถ้ารูปไม่ได้ขึ้นต้นด้วย http (แปลว่าเป็นไฟล์ในเครื่อง local)
+                if (!finalImageUrl.startsWith('http')) {
+                    finalImageUrl = '/' + finalImageUrl.replace(/\\/g, '/').replace('public/', '');
+                }
+                
+                imgLink = `<a href="${finalImageUrl}" target="_blank" class="btn btn-sm btn-outline-info">ดูรูป</a>`;
+            }
+
+            // จัดฟอร์แมตวันที่
+            let date = '-';
+            if (issue.createdAt) {
+                date = new Date(issue.createdAt).toLocaleString('th-TH');
+            }
+
+            // สร้างแถวตาราง
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${userName}</td>
+              <td><span class="badge bg-secondary">${role}</span></td>
+              <td>${msg}</td>
+              <td>${imgLink}</td>
+              <td>${date}</td>
+            `;
+            list.appendChild(row);
+          });
+        } else {
+          list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No issues found.</td></tr>';
+        }
+      } catch (error) {
+        console.error("Error fetching issues:", error);
+        document.getElementById('issues-list').innerHTML = `<tr><td colspan="5" class="text-center text-danger">Error loading issues.</td></tr>`;
+      }
+    }
+
+    // Tab event for issues
+    document.getElementById('issues-tab').addEventListener('click', fetchIssues);
+
+    // Initial fetch
+    fetchUsers();
+    fetchAllRestaurants();
+    fetchIssues();
+  </script>
+</body>
+</html>

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restaurant Details - SAONLY</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Tesseract.js for OCR -->
+  <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+  <script>
+    // Theme setup
+    (function() {
+      const getPreferredTheme = () => localStorage.getItem('theme') || 'light';
+      document.documentElement.setAttribute('data-bs-theme', getPreferredTheme());
+    })();
+  </script>
+  <style>
+    .menu-img { height: 150px; object-fit: cover; width: 100%; }
+    .restaurant-header-img { height: 300px; object-fit: cover; width: 100%; }
+  </style>
+</head>
+<body class="bg-body-tertiary">
+
+  <nav class="navbar navbar-expand-lg bg-body-secondary shadow-sm mb-4">
+    <div class="container">
+      <a class="navbar-brand fw-bold text-primary" href="/">SAONLY</a>
+      <div class="d-flex gap-2">
+        <a href="/" class="btn btn-outline-secondary btn-sm">Back</a>
+        <button class="btn btn-sm btn-outline-secondary" id="theme-toggle-btn">🌓</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container pb-5">
+    <!-- Restaurant Info Section -->
+    <div id="restaurant-info" class="mb-5">
+      <!-- Content loaded via JS -->
+      <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+    </div>
+
+    <!-- Menu Section -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h3 class="fw-bold">🍽️ Menu</h3>
+      <button id="add-menu-btn" class="btn btn-primary d-none" data-bs-toggle="modal" data-bs-target="#addMenuModal">
+        + Add Menu
+      </button>
+    </div>
+    
+    <div id="menu-list" class="row g-4">
+      <!-- Menus loaded via JS -->
+    </div>
+  </div>
+
+  <!-- Add Menu Modal -->
+  <div class="modal fade" id="addMenuModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Add New Menu Item</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <!-- OCR Section -->
+          <div class="mb-4 p-3 bg-body-secondary rounded border">
+            <label class="form-label small fw-bold text-primary">✨ AI Auto-fill (Beta)</label>
+            <div class="input-group input-group-sm">
+              <input type="file" class="form-control" id="ocrInput" accept="image/*">
+              <button class="btn btn-outline-primary" type="button" id="ocrBtn">Scan Text</button>
+            </div>
+            <small class="text-muted d-block mt-1" id="ocr-status">Upload a menu image (Thai/English) to auto-fill fields.</small>
+          </div>
+          
+          <!-- OCR Results Area (Hidden by default) -->
+          <div id="ocr-results-area" class="d-none">
+            <h6 class="fw-bold text-success mb-3">✅ Detected Items (<span id="detected-count">0</span>)</h6>
+            <div id="ocr-cards-container" style="max-height: 400px; overflow-y: auto;" class="mb-3">
+              <!-- Cards will be injected here -->
+            </div>
+            <button type="button" id="save-ocr-items-btn" class="btn btn-success w-100 mb-2">Save All Items</button>
+            <button type="button" id="cancel-ocr-btn" class="btn btn-outline-secondary w-100">Cancel / Back</button>
+          </div>
+
+          <form id="add-menu-form" class="d-block">
+            <hr>
+            <div class="mb-3">
+              <label class="form-label">Menu Name</label>
+              <input type="text" class="form-control" id="menuName" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Price (THB)</label>
+              <input type="number" class="form-control" id="menuPrice" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Description</label>
+              <textarea class="form-control" id="menuDesc" rows="2"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Image</label>
+              <input type="file" class="form-control" id="menuImage" accept="image/*">
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Save Menu</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const restaurantId = window.location.pathname.split('/').pop();
+    const token = localStorage.getItem('token');
+    let currentUser = null;
+
+    if (token) {
+      try {
+        currentUser = JSON.parse(atob(token.split('.')[1]));
+      } catch(e) {}
+    }
+
+    // Theme Toggler
+    document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-bs-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+    });
+
+    async function fetchRestaurantDetails() {
+      try {
+        const res = await fetch(`/api/restaurant/${restaurantId}`);
+        const json = await res.json();
+        
+        if (!json.success) {
+          document.getElementById('restaurant-info').innerHTML = `<div class="alert alert-danger">Restaurant not found</div>`;
+          return;
+        }
+
+        const r = json.data;
+        const imageSrc = (r.images && r.images.length > 0) ? r.images[0] : (r.image || 'https://via.placeholder.com/1200x400?text=No+Image');
+
+        // Render Restaurant Info
+        document.getElementById('restaurant-info').innerHTML = `
+          <div class="card border-0 shadow-sm overflow-hidden">
+            <img src="${imageSrc}" class="restaurant-header-img" alt="${r.name}">
+            <div class="card-body p-4">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <h1 class="fw-bold mb-2">${r.name}</h1>
+                    <span class="badge bg-warning text-dark fs-6">⭐ ${r.averageRating || 'New'}</span>
+                    <span class="badge bg-secondary fs-6 ms-2">${r.category}</span>
+                    ${r.university ? 
+                      `<span class="badge bg-info text-dark fs-6 ms-2"> ${r.university}</span>` 
+                      : ''}
+                </div>
+                ${(currentUser && (currentUser.id === r.user || currentUser.role === 'admin')) ? 
+                  `<a href="/edit/${r._id}" class="btn btn-outline-secondary">Edit Restaurant</a>` : ''}
+              </div>
+              <p class="lead mt-3">${r.description}</p>
+              <div class="mt-3">
+                ${r.googleMapLink ? `<a href="${r.googleMapLink}" target="_blank" class="btn btn-outline-primary btn-sm">📍 View on Map</a>` : ''}
+                <a href="/review/${r._id}" class="btn btn-outline-warning btn-sm">⭐ Reviews</a>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Show Add Menu button if owner
+        if (currentUser && (currentUser.id === r.user || currentUser.role === 'admin')) {
+          document.getElementById('add-menu-btn').classList.remove('d-none');
+        }
+
+        // Render Menus
+        const menuList = document.getElementById('menu-list');
+        menuList.innerHTML = '';
+        if (r.menus && r.menus.length > 0) {
+          r.menus.forEach(menu => {
+            const menuImg = menu.image || 'https://via.placeholder.com/300x200?text=Menu';
+            const canEdit = currentUser && (currentUser.id === r.user || currentUser.role === 'admin');
+            
+            menuList.innerHTML += `
+              <div class="col-md-4 col-lg-3">
+                <div class="card h-100 border-0 shadow-sm">
+                  <img src="${menuImg}" class="menu-img card-img-top" alt="${menu.name}">
+                  <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                      <h5 class="card-title">${menu.name}</h5>
+                      ${canEdit ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteMenu('${menu._id}')" title="Delete Menu">×</button>` : ''}
+                    </div>
+                    <p class="card-text text-muted small">${menu.description || ''}</p>
+                    <h6 class="text-primary fw-bold">${menu.price} THB</h6>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+        } else {
+          menuList.innerHTML = `<div class="col-12 text-center text-muted py-4">No menu items yet.</div>`;
+        }
+
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // Handle Add Menu Submit
+    document.getElementById('add-menu-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const formData = new FormData();
+      formData.append('name', document.getElementById('menuName').value);
+      formData.append('price', document.getElementById('menuPrice').value);
+      formData.append('description', document.getElementById('menuDesc').value);
+      
+      const fileInput = document.getElementById('menuImage');
+      if (fileInput.files[0]) {
+        formData.append('image', fileInput.files[0]);
+      }
+
+      try {
+        const res = await fetch(`/api/restaurant/${restaurantId}/menu`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: formData
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          alert('Menu added successfully!');
+          location.reload();
+        } else {
+          alert(data.error || 'Failed to add menu');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Error adding menu');
+      }
+    });
+
+    // --- Image Preprocessing (Grayscale + Contrast) ---
+    const preprocessImage = (file) => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imgData.data;
+          
+          // Increase contrast (1.5 = 50% more contrast)
+          const contrast = 1.5; 
+          const intercept = 128 * (1 - contrast);
+
+          for (let i = 0; i < data.length; i += 4) {
+            // Grayscale (Luma formula)
+            const gray = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+            
+            // Apply contrast
+            let newColor = gray * contrast + intercept;
+            newColor = Math.min(255, Math.max(0, newColor)); // Clamp 0-255
+
+            data[i] = data[i+1] = data[i+2] = newColor;
+          }
+          
+          ctx.putImageData(imgData, 0, 0);
+          resolve(canvas.toDataURL('image/jpeg'));
+        };
+        img.src = URL.createObjectURL(file);
+      });
+    };
+
+    // --- Tesseract.js OCR Logic ---
+    document.getElementById('ocrBtn').addEventListener('click', async () => {
+      const fileInput = document.getElementById('ocrInput');
+      const statusText = document.getElementById('ocr-status');
+      
+      if (!fileInput.files[0]) {
+        alert('Please select an image first.');
+        return;
+      }
+
+      const file = fileInput.files[0];
+      statusText.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Preprocessing & Scanning...';
+      statusText.className = 'text-primary small d-block mt-1';
+
+      try {
+        // 1. Preprocess image for better accuracy
+        const processedImage = await preprocessImage(file);
+
+        // Recognize text (Thai + English)
+        const { data: { text } } = await Tesseract.recognize(
+          processedImage,
+          'tha+eng', // กำหนดให้รองรับภาษาไทยและอังกฤษ
+          { logger: m => {
+              console.log(m);
+              if (m.status === 'recognizing text') statusText.innerText = `Scanning... ${Math.round(m.progress * 100)}%`;
+          }}
+        );
+
+        console.log('Recognized Text:', text);
+
+        // --- Advanced Parsing for Multiple Items ---
+        const lines = text.split('\n').filter(l => l.trim().length > 0);
+        const detectedItems = [];
+        
+        lines.forEach(line => {
+          line = line.trim();
+          
+          // Regex: ค้นหาราคาที่อยู่ท้ายบรรทัด (รองรับจุดไข่ปลา, ทศนิยม, หน่วยเงิน)
+          // เช่น "ข้าวมันไก่ ... 50", "Pad Thai 60.-", "Coke 15 THB"
+          const priceMatch = line.match(/(?:[\s\._-]+|^)(\d+(?:[.,]\d{2})?)\s*(?:บาท|THB|฿|\.-)?$/i);
+          
+          if (priceMatch) {
+            const price = priceMatch[1].replace(',', '.'); // แปลง , เป็น .
+            
+            // ชื่อเมนูคือข้อความทั้งหมดก่อนหน้าราคา
+            let name = line.substring(0, priceMatch.index).trim();
+            
+            // ลบจุดไข่ปลาหรือขีดท้ายชื่อ (เช่น "Pad Thai .......")
+            name = name.replace(/[\._-]+$/, '').trim();
+            
+            // ตรวจสอบว่าชื่อไม่ใช่ตัวเลขล้วนๆ และมีความยาวพอสมควร
+            if (name.length > 0 && isNaN(name)) {
+              detectedItems.push({ name, price, description: '' });
+            }
+          } else {
+            // ถ้าบรรทัดนี้ไม่มีราคา อาจจะเป็นรายละเอียด (Description) ของเมนูก่อนหน้า
+            if (detectedItems.length > 0) {
+              const lastItem = detectedItems[detectedItems.length - 1];
+              // เพิ่มต่อท้าย Description เดิม (ถ้าไม่ยาวเกินไปจนดูเหมือนเป็น Header ใหม่)
+              if (line.length < 100) {
+                lastItem.description = lastItem.description ? lastItem.description + ' ' + line : line;
+              }
+            }
+          }
+        });
+
+        if (detectedItems.length > 0) {
+          // Hide manual form, Show OCR results
+          document.getElementById('add-menu-form').classList.add('d-none');
+          document.getElementById('add-menu-form').classList.remove('d-block');
+          document.getElementById('ocr-results-area').classList.remove('d-none');
+          
+          const container = document.getElementById('ocr-cards-container');
+          container.innerHTML = '';
+          document.getElementById('detected-count').innerText = detectedItems.length;
+
+          detectedItems.forEach((item, index) => {
+            container.innerHTML += `
+              <div class="card mb-2 border shadow-sm ocr-item-card">
+                <div class="card-body p-2">
+                  <div class="row g-2 align-items-center">
+                    <div class="col-7">
+                      <input type="text" class="form-control form-control-sm mb-1 fw-bold item-name" value="${item.name}" placeholder="Name">
+                      <input type="text" class="form-control form-control-sm text-muted item-desc" value="${item.description}" placeholder="Description">
+                    </div>
+                    <div class="col-3">
+                      <div class="input-group input-group-sm">
+                        <input type="number" class="form-control item-price" value="${item.price}" placeholder="Price">
+                      </div>
+                    </div>
+                    <div class="col-2 text-end">
+                      <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.card').remove()">×</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+
+          statusText.innerText = '✅ Scan complete! Review items below.';
+          statusText.className = 'text-success small d-block mt-1';
+        } else {
+          statusText.innerText = '❌ No menu items detected. Try a clearer image.';
+          statusText.className = 'text-danger small d-block mt-1';
+        }
+      } catch (err) {
+        console.error(err);
+        statusText.innerText = '❌ Error scanning image.';
+        statusText.className = 'text-danger small d-block mt-1';
+      }
+    });
+
+    // --- Handle Save All OCR Items ---
+    document.getElementById('save-ocr-items-btn').addEventListener('click', async () => {
+      const cards = document.querySelectorAll('.ocr-item-card');
+      const promises = [];
+      
+      // Disable button
+      const btn = document.getElementById('save-ocr-items-btn');
+      btn.disabled = true;
+      btn.innerText = 'Saving...';
+
+      cards.forEach(card => {
+        const name = card.querySelector('.item-name').value;
+        const price = card.querySelector('.item-price').value;
+        const description = card.querySelector('.item-desc').value;
+
+        if (name && price) {
+          const formData = new FormData();
+          formData.append('name', name);
+          formData.append('price', price);
+          formData.append('description', description);
+          // Note: We are not attaching the image to individual items here to keep it simple
+
+          promises.push(
+            fetch(`/api/restaurant/${restaurantId}/menu`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` },
+              body: formData
+            })
+          );
+        }
+      });
+
+      await Promise.all(promises);
+      alert('All items saved!');
+      location.reload();
+    });
+
+    // --- Cancel OCR ---
+    document.getElementById('cancel-ocr-btn').addEventListener('click', () => {
+      document.getElementById('ocr-results-area').classList.add('d-none');
+      document.getElementById('add-menu-form').classList.remove('d-none');
+      document.getElementById('add-menu-form').classList.add('d-block');
+      document.getElementById('ocr-status').innerText = 'Upload a menu image (Thai/English) to auto-fill fields.';
+    });
+
+    // --- Delete Menu Function ---
+    window.deleteMenu = async (menuId) => {
+      if (!confirm('Are you sure you want to delete this menu item?')) return;
+
+      try {
+        const res = await fetch(`/api/restaurant/${restaurantId}/menu/${menuId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          fetchRestaurantDetails(); // Reload data
+        } else {
+          alert(data.error || 'Failed to delete menu');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Error deleting menu');
+      }
+    };
+
+    fetchRestaurantDetails();
+  </script>
+</body>
+</html>

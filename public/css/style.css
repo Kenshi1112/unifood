@@ -1,0 +1,36 @@
+/* จัดปุ่ม favorite checkbox ไปด้านขวา */
+.favorite-checkbox-container {
+	min-width: 60px;
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+}
+
+/* ปุ่ม Favorite Toggle (icon) */
+.favorite-toggle-btn {
+	font-size: 1.6rem;
+	padding: 0.3rem 0.7rem;
+	border-radius: 50%;
+	transition: background 0.2s, color 0.2s;
+}
+.favorite-toggle-btn.active, .favorite-toggle-btn:active, .favorite-toggle-btn[aria-pressed="true"] {
+	background: #f8d7da;
+	color: #dc3545;
+	border-color: #dc3545;
+}
+
+.favorite-toggle-btn .bi-heart,
+.favorite-toggle-btn .bi-heart-fill {
+	color: #dc3545;
+}
+
+/* ปุ่ม Favorite ใน card */
+.favorite-btn .bi-heart,
+.favorite-btn .bi-heart-fill {
+	color: #dc3545;
+	transition: color 0.2s;
+}
+.favorite-btn:focus {
+	outline: none;
+	box-shadow: none;
+}
